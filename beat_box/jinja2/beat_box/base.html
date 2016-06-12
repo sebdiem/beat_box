@@ -1,0 +1,17 @@
+<html>
+<head>
+</head>
+<body>
+<div id="pageContainer">
+    <div id="nav_top_right">
+        {% if user.is_authenticated %}
+                <p>Hello {{ user.get_full_name|default:user.username }}!</p>
+        {% else %}
+                <p><a href="{% url 'social:begin' 'google-oauth2' %}?next={{ request.path }}">Login with Google</a></p>
+        {% endif %}
+    </div>
+    {% block content %}
+    {% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<html>
+<head>
+    <script src='https://cdn.jsdelivr.net/vue/1.0.24/vue.min.js'></script>
+</head>
+<body>
+    <div id="app">
+      {{ message }}
+      <input v-model="message">
+      <button v-on:click="vue_fetch">Fetch!</button>
+    </div>
+    <% for suggestion in data.results %>
+    <div>
+        <h2>[[ suggestion.title ]]</h2>
+        <date>[[ suggestion.created_at ]]</date>
+        <p>[[ suggestion.description ]]</p>
+        <author>by [[ suggestion.author.first_name ]]</author>
+        <p>likes: [[ suggestion.likes ]]</p>
+        <% if suggestion.liked %>
+            <button>unlike</button>
+        <% else %>
+            <button v-on:click="like('[[ url('api:suggestion-like', args=[suggestion.uid]) ]]')">like</button>
+        <% endif %>
+        <% if not suggestion.read_only %>
+            <button>edit</button>
+        <% endif %>
+    </div>
+    <% endfor %>
+    <script>
+        "use strict"
+        var vue = new Vue({
+          el: '#app',
+          data: {
+            message: 'Hello Vue.js!'
+          },
+          methods: {
+            like: function like(url) {
+                function getCookie(name) {
+                    var cookieValue = null
+                    if (document.cookie && document.cookie != '') {
+                        var cookies = document.cookie.split(';')
+                        for (var i = 0; i < cookies.length; i++) {
+                            var cookie = cookies[i].trim()
+                            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                                cookieValue = decodeURIComponent(cookie.substring(name.length + 1))
+                                break
+                            }
+                        }
+                    }
+                    return cookieValue
+                }
+                var headers = {
+                    Accept: 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+                var req = new Request(url, { method: 'POST', credentials: 'include', headers: headers })
+                fetch(req)
+            },
+            url: function url(path, uid) {
+                return {
+                  detail: '[[ url('api:suggestion-detail', args=['3141592653589793']) ]]'.replace('3141592653589793', uid),
+                  list: '[[ url('api:suggestion-list') ]]',
+                  like: '[[ url('api:suggestion-like', args=['3141592653589793']) ]]'.replace('3141592653589793', uid),
+                  unlike: '[[ url('api:suggestion-unlike', args=['3141592653589793']) ]]'.replace('3141592653589793', uid),
+                }[path]
+            },
+            vue_fetch: function vue_fetch() {
+                var headers = {
+                    Accept: 'application/json',
+                }
+                var myurl = this.url('list')
+                var req = new Request(myurl, { method: 'GET', credentials: 'include', headers: headers })
+                fetch(req).then(function(response) { response.json().then(function(json) { console.debug(json) }) })
+            }
+          }
+        })
+        console.log(vue.url('like', '1'))
+        console.log(vue.url('unlike', '1'))
+    </script>
+</body>
+</html>
