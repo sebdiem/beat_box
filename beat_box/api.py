@@ -1,4 +1,5 @@
 import copy
+import functools
 
 from rest_framework import pagination
 from rest_framework import permissions
@@ -58,17 +59,35 @@ class Suggestion(serializers.ModelSerializer):
         return copy.deepcopy(self._declared_fields)
 
 
-def make_read_only(serializer, new_class_name):
-    """Return a new serializer class based on ``serializer`` but with all fields read-only."""
+def change_serializer(serializer, new_class_name, **kwargs):
+    """Return a new serializer class based on ``serializer`` but with all fields changed according to kwargs."""
     fields = {}
-    for k, v in serializer._declared_fields.items():
-        args = v._args
-        kwargs = v._kwargs
-        kwargs['read_only'] = True
-        fields[k] = v.__class__(*args, **kwargs)
+    for key, field in serializer._declared_fields.items():
+        field = copy.deepcopy(field)
+        for k, v in kwargs.items():
+            field._kwargs[k] = v
+            setattr(field, k, v)
+        fields[key] = field
+
     fields['Meta'] = type('Meta', (serializer.Meta,), {})
 
     return type(new_class_name, (serializer,), fields)
+
+def make_list_serializer(serializer):
+    return functools.partial(serializer, many=True)
+
+SuggestionReadOnly = change_serializer(Suggestion, 'SuggestionReadOnly', read_only=True, required=False)
+SuggestionUpdate = change_serializer(Suggestion, 'SuggestionUpdate', required=False)
+
+
+class serializer(object):
+    """Decorator to define a serializer for a function."""
+    def __init__(self, serializer_class):
+        self.serializer_class = serializer_class
+
+    def __call__(self, f):
+        f.serializer_class = self.serializer_class
+        return f
 
 
 class IsOwnerOrReadOnly(permissions.IsAuthenticated):
@@ -102,11 +121,23 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         list: list, create
         detail: retrieve, update, delete, like, unlike
     """
-    serializer_class = Suggestion
     permission_classes = (IsOwnerOrReadOnly,)
     pagination_class = SuggestionPagination
     lookup_field = 'pk'
+    serializer_class = Suggestion
     #template_name = 'beat_box/suggestions.html'
+
+    def get_serializer_class(self):
+        default = self.serializer_class
+        ret = None
+        if self.request:
+            view = self.request.parser_context.get('view', None)
+            if view:
+                action = getattr(view, 'action', None)
+                if action:
+                    fun = getattr(self, action)
+                    ret = getattr(fun, 'serializer_class', None)
+        return ret or serializers.Serializer
 
     def get_queryset(self):
         return (models.Suggestion.objects
@@ -119,19 +150,37 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             ))
         )
 
+    @serializer(make_list_serializer(SuggestionReadOnly))
+    def list(self, *args, **kwargs):
+        return super().list(*args, **kwargs)
+
+    @serializer(Suggestion)
+    def create(self, *args, **kwargs):
+        return super().create(*args, **kwargs)
+
+    @serializer(SuggestionReadOnly)
+    def retrieve(self, *args, **kwargs):
+        return super().retrieve(*args, **kwargs)
+
+    @serializer(SuggestionUpdate)
+    def update(self, *args, **kwargs):
+        return super().update(*args, **kwargs)
+
+    @serializer(SuggestionUpdate)
+    def partial_update(self, *args, **kwargs):
+        return super().update(*args, **kwargs)
+
+    @serializer(serializers.Serializer)
+    def destroy(self, *args, **kwargs):
+        return super().destroy(*args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
-    def perform_update(self, serializer):
-        # empty override to show explicitly that update is available on the viewset
-        super().perform_update(serializer)
-
-    def perform_destroy(self, instance):
-        # empty override to show explicitly that destroy is available on the viewset
-        super().perform_destroy(instance)
-
+    @serializer(SuggestionReadOnly)
     @detail_route(methods=['post'])
     def like(self, request, pk):
+        """Like me!"""
         suggestion = self.get_object()
         try:
             models.Like.objects.create(suggestion=suggestion, author=request.user)
@@ -142,8 +191,10 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             print(e)
         return Response(self.get_serializer(suggestion).data)
 
+    @serializer(SuggestionReadOnly)
     @detail_route(methods=['post'])
     def unlike(self, request, pk):
+        """Unlike me!"""
         suggestion = self.get_object()
         try:
             models.Like.objects.get(suggestion=suggestion, author=request.user).delete()

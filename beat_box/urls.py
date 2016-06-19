@@ -14,6 +14,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
 from rest_framework import routers
+from rest_framework_docs.views import DRFDocsView
 
 from django.conf.urls import include, url
 
@@ -27,8 +28,8 @@ router.register('suggestions', api.SuggestionViewSet, base_name='suggestion')
 urlpatterns = [
     url(r'^home/$', views.login),
     url('', include('social.apps.django_app.urls', namespace='social')),
-    url('', include(router.urls, namespace='api')),
+    url('^api/', include(router.urls, namespace='api')),
     url('^basic/$', views.base_view),
     url('^info/$', views.info),
-    url(r'^docs/', include('rest_framework_docs.urls')),
+    url(r'^docs/', DRFDocsView.as_view(drf_router=router), name='drfdocs'),
 ]
